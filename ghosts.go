@@ -67,7 +67,7 @@ func GenerateNew(old, newhello string) (result string) {
 func main() {
 	if len(os.Args) == 1 {
 		exePath, _ := os.Executable()
-		cmd := exec.Command("/usr/bin/sudo", exePath, "1")
+		cmd := exec.Command(SudoPath, exePath, "1")
 		var stdOut, stdErr bytes.Buffer
 		cmd.Stderr = &stdErr
 		cmd.Stdout = &stdOut
