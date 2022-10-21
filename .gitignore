@@ -1,3 +1,6 @@
 .vscode
 hosts
 ghosts
+*.tar.gz
+*.tar
+*.zip
