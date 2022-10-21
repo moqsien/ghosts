@@ -1,4 +1,4 @@
-### ghost
+### ghosts
 ----------------
 获取dns并自动修改和备份hosts文件，加速github访问。
 
