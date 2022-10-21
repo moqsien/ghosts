@@ -9,18 +9,41 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"runtime"
 	"strings"
 )
 
-const (
-	HelloGithubUrl  = "https://raw.hellogithub.com/hosts"
-	HostsPath       = "/etc/hosts"
-	HostsBackupPath = "/etc/hosts_backups"
-	SudoPath        = "/usr/bin/sudo"
-	Flag            = "# GitHub520 Host Start"
+var (
+	HelloGithubUrl  string
+	HostsPath       string
+	HostsBackupPath string
+	SudoPath        string
+	Flag            string
 )
 
+func init() {
+	HelloGithubUrl = "https://raw.hellogithub.com/hosts"
+	HostsPath = GetHostsPath()
+	HostsBackupPath = fmt.Sprintf("%s_backups", GetHostsPath())
+	SudoPath = GetSudoPath()
+	Flag = "# GitHub520 Host Start"
+}
+
 var Reg *regexp.Regexp = regexp.MustCompile(`# GitHub520 Host Start[\s\S]*# GitHub520 Host End`)
+
+func GetHostsPath() string {
+	if strings.Contains(runtime.GOOS, "windows") {
+		return `C:\Windows\System32\drivers\etc\hosts`
+	}
+	return "/etc/hosts"
+}
+
+func GetSudoPath() string {
+	if strings.Contains(runtime.GOOS, "windows") {
+		return ""
+	}
+	return "/usr/bin/sudo"
+}
 
 func GetHelloGithub() string {
 	r, err := (&http.Client{}).Get(HelloGithubUrl)
@@ -67,7 +90,12 @@ func GenerateNew(old, newhello string) (result string) {
 func main() {
 	if len(os.Args) == 1 {
 		exePath, _ := os.Executable()
-		cmd := exec.Command(SudoPath, exePath, "1")
+		var cmd *exec.Cmd
+		if SudoPath != "" {
+			cmd = exec.Command(SudoPath, exePath, "1")
+		} else {
+			cmd = exec.Command(exePath, "1", "2")
+		}
 		var stdOut, stdErr bytes.Buffer
 		cmd.Stderr = &stdErr
 		cmd.Stdout = &stdOut
