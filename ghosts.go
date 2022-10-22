@@ -123,4 +123,5 @@ func main() {
 		}
 		fmt.Println("successed!")
 	}
+	// gh.Test("https://www.foul.trade:3000/Johy/Hosts/raw/branch/main/hosts.txt")
 }
