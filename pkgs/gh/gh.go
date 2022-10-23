@@ -6,15 +6,14 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	"os/user"
 	"regexp"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-ping/ping"
 	"github.com/gogf/gf/container/garray"
+	"github.com/moqsien/ghosts/pkgs/utils"
 	"github.com/panjf2000/ants/v2"
 )
 
@@ -36,54 +35,47 @@ type FuncArg struct {
 }
 
 type Ghosts struct {
-	url       string
-	hostList  *garray.StrArray
-	ipReg     *regexp.Regexp
-	urlReg    *regexp.Regexp
-	hostsReg  *regexp.Regexp
-	timeout   time.Duration // Second
-	maxAvgRtt time.Duration // Millisecond
-	pingCount int           // how many ping packets will be sent
-	workerNum int           // Number of workers
-	isWin     bool          // windows flag
+	once       *sync.Once
+	sourceUrls []string
+	hostList   *garray.StrArray
+	ipReg      *regexp.Regexp
+	urlReg     *regexp.Regexp
+	hostsReg   *regexp.Regexp
+	timeout    time.Duration // Second
+	maxAvgRtt  time.Duration // Millisecond
+	pingCount  int           // how many ping packets will be sent
+	workerNum  int           // Number of workers
 }
 
-func New(url string) *Ghosts {
+func New(urls ...string) *Ghosts {
 	ipReg := `((2(5[0-5]|[0-4]\d))|[0-1]?\d{1,2})(\.((2(5[0-5]|[0-4]\d))|[0-1]?\d{1,2})){3}`
-	urlReg := `[a-zA-Z\.]{5,}`
+	urlReg := `[a-zA-Z0-9\.]{5,}`
 	hostsReg := fmt.Sprintf(`%s[\s\S]*%s`, HEAD, TAIL)
-	var isWin bool = false
-	if strings.Contains(runtime.GOOS, "windows") {
-		isWin = true
-	}
 	return &Ghosts{
-		url:       url,
-		hostList:  garray.NewStrArray(true),
-		ipReg:     regexp.MustCompile(ipReg),
-		urlReg:    regexp.MustCompile(urlReg),
-		hostsReg:  regexp.MustCompile(hostsReg),
-		timeout:   20 * time.Second,
-		maxAvgRtt: 400 * time.Millisecond,
-		pingCount: 10,
-		workerNum: 100,
-		isWin:     isWin,
+		once:       &sync.Once{},
+		sourceUrls: urls,
+		hostList:   garray.NewStrArray(true),
+		ipReg:      regexp.MustCompile(ipReg),
+		urlReg:     regexp.MustCompile(urlReg),
+		hostsReg:   regexp.MustCompile(hostsReg),
+		timeout:    20 * time.Second,
+		maxAvgRtt:  400 * time.Millisecond,
+		pingCount:  10,
+		workerNum:  100,
 	}
 }
 
 func (that *Ghosts) HostsFilePath() string {
-	if that.isWin {
-		return `C:\Windows\System32\drivers\etc\hosts`
-	}
-	return "/etc/hosts"
+	return utils.GetHostsFilePath()
 }
 
 func (that *Ghosts) BackupFilePath() string {
 	return fmt.Sprintf("%s_backups", that.HostsFilePath())
 }
 
-func (that *Ghosts) GetHosts() {
-	if that.url != "" {
-		r, err := (&http.Client{Timeout: that.timeout}).Get(that.url)
+func (that *Ghosts) GetHosts(url string) {
+	if url != "" {
+		r, err := (&http.Client{Timeout: that.timeout}).Get(url)
 		if err != nil {
 			fmt.Println("Get hosts errored: ", err)
 			return
@@ -95,6 +87,11 @@ func (that *Ghosts) GetHosts() {
 		that.Parse(byt)
 		defer r.Body.Close()
 	}
+}
+
+func (that *Ghosts) extractHostUrl(text, ip string) string {
+	raw := strings.Replace(text, ip, "", -1)
+	return strings.TrimSpace(raw)
 }
 
 func (that *Ghosts) Parse(resp []byte) {
@@ -114,11 +111,12 @@ func (that *Ghosts) Parse(resp []byte) {
 	if err != nil {
 		panic(err)
 	}
+	defer pool.Release()
 	for sc.Scan() {
 		text := sc.Text()
 		ipList := that.ipReg.FindAllString(text, -1)
 		if len(ipList) == 1 {
-			url := that.urlReg.FindString(text)
+			url := that.extractHostUrl(text, ipList[0])
 			if url == "" {
 				continue
 			}
@@ -130,7 +128,6 @@ func (that *Ghosts) Parse(resp []byte) {
 		}
 	}
 	wg.Wait()
-	fmt.Println(that.hostList.String())
 }
 
 func (that *Ghosts) PingHosts(ip, url string) {
@@ -139,12 +136,16 @@ func (that *Ghosts) PingHosts(ip, url string) {
 		fmt.Println("Ping hosts errored: ", err)
 		return
 	}
-	pinger.Count = that.pingCount
-	if that.isWin {
+	pinger.Count = 10
+	if utils.IsWindows() {
 		pinger.SetPrivileged(true)
 	}
-	pinger.Timeout = that.maxAvgRtt
-	pinger.Run()
+	pinger.Timeout = 400 * time.Millisecond
+	err = pinger.Run()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 	statics := pinger.Statistics()
 	if len(statics.Rtts) > 0 {
 		line := fmt.Sprintf(LinePattern, ip, url, statics.AvgRtt)
@@ -177,32 +178,52 @@ func (that *Ghosts) ReadAndBackup() (content []byte) {
 	return
 }
 
-func (that *Ghosts) Gernerate() (newContent string) {
-	that.GetHosts()
+func (that *Ghosts) replace(oldContent, newHostStr string) string {
+	if strings.Contains(oldContent, HEAD) {
+		return that.hostsReg.ReplaceAllString(oldContent, newHostStr)
+	} else if strings.Contains(oldContent, FLAG) {
+		return REG.ReplaceAllString(oldContent, newHostStr)
+	} else {
+		if newHostStr != "" {
+			return fmt.Sprintf("%s\n%s", oldContent, newHostStr)
+		}
+		return oldContent
+	}
+}
+
+func (that *Ghosts) Gernerate(toclear bool) (newContent string) {
+	if toclear {
+		oldContent := string(that.ReadAndBackup())
+		if oldContent == "" {
+			return
+		}
+		return that.replace(oldContent, "")
+	}
+	for _, url := range that.sourceUrls {
+		that.GetHosts(url)
+	}
 	if !that.hostList.IsEmpty() {
 		loc, _ := time.LoadLocation("Asia/Shanghai")
 		oldContent := string(that.ReadAndBackup())
 		if oldContent == "" {
 			return
 		}
-		newHostStr := fmt.Sprintf("%s\n%s\n%s%s",
+		newHostStr := fmt.Sprintf("%s\n%s\n%s\n%s",
 			HEAD,
 			fmt.Sprintf(TIME, time.Now().In(loc).Format("2006-01-02 15:04:05")),
 			that.hostList.Join("\n"),
 			TAIL)
-		if strings.Contains(oldContent, HEAD) {
-			return that.hostsReg.ReplaceAllString(oldContent, newHostStr)
-		} else if strings.Contains(oldContent, FLAG) {
-			return REG.ReplaceAllString(oldContent, newHostStr)
-		} else {
-			return fmt.Sprintf("%s\n%s", oldContent, newHostStr)
-		}
+		return that.replace(oldContent, newHostStr)
 	}
 	return
 }
 
-func (that *Ghosts) Run() {
-	newStr := that.Gernerate()
+func (that *Ghosts) Run(toclear ...bool) {
+	var clear bool
+	if len(toclear) > 0 && toclear[0] {
+		clear = true
+	}
+	newStr := that.Gernerate(clear)
 	if newStr == "" {
 		return
 	}
@@ -212,16 +233,4 @@ func (that *Ghosts) Run() {
 		return
 	}
 	fmt.Println("Successed!")
-}
-
-func Test(url string) {
-	// g := New(url)
-	// g.GetHosts()
-	// loc, _ := time.LoadLocation("Asia/Shanghai")
-	// fmt.Println(time.Now().In(loc).Format("2006-01-02 15:04:05"))
-	// p, _ := os.Executable()
-	// fmt.Println(filepath.Dir(p))
-	u, _ := user.Current()
-	fmt.Println(u.Username)
-	fmt.Println(u.HomeDir)
 }
