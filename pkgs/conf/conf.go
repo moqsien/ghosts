@@ -19,11 +19,12 @@ const (
 )
 
 type Conf struct {
-	SourceUrls []string `yaml:"sourceUrls"`
-	ReqTimeout int      `yaml:"reqTimeout"`
-	MaxAvgRtt  int      `yaml:"maxAvgRtt"`
-	PingCount  int      `yaml:"pingCount"`
-	WorkerNum  int      `yaml:"workerNum"`
+	SourceUrls  []string `yaml:"sourceUrls"`
+	HostFilters []string `yaml:"hostFilters"`
+	ReqTimeout  int      `yaml:"reqTimeout"`
+	MaxAvgRtt   int      `yaml:"maxAvgRtt"`
+	PingCount   int      `yaml:"pingCount"`
+	WorkerNum   int      `yaml:"workerNum"`
 }
 
 var defaultConf = &Conf{
@@ -31,6 +32,9 @@ var defaultConf = &Conf{
 		"https://www.foul.trade:3000/Johy/Hosts/raw/branch/main/hosts.txt",
 		"https://gitlab.com/ineo6/hosts/-/raw/master/next-hosts",
 		"https://raw.hellogithub.com/hosts",
+	},
+	HostFilters: []string{
+		"github",
 	},
 	ReqTimeout: 30,
 	MaxAvgRtt:  400,
@@ -168,10 +172,11 @@ func (that *GhConfig) RemoveUrls(idx int) {
 	var changed bool
 	if idx < len(that.Conf.SourceUrls) && idx >= 0 {
 		next := idx + 1
-		if next == len(that.Conf.SourceUrls) {
-			next--
+		var tail []string
+		if next < len(that.Conf.SourceUrls) {
+			tail = that.Conf.SourceUrls[next:]
 		}
-		that.Conf.SourceUrls = append(that.Conf.SourceUrls[:idx], that.Conf.SourceUrls[next:]...)
+		that.Conf.SourceUrls = append(that.Conf.SourceUrls[:idx], tail...)
 		changed = true
 	}
 	if changed {
@@ -198,7 +203,7 @@ func (that *GhConfig) ShowConfig() {
 
 func (that *GhConfig) ConfigPath() string {
 	if that.path == "" {
-		that.Path()
+		that.path, _ = that.Path()
 	}
 	return that.path
 }

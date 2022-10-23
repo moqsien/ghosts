@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-ping/ping"
 	"github.com/gogf/gf/container/garray"
+	"github.com/moqsien/ghosts/pkgs/conf"
 	"github.com/moqsien/ghosts/pkgs/utils"
 	"github.com/panjf2000/ants/v2"
 )
@@ -35,33 +36,37 @@ type FuncArg struct {
 }
 
 type Ghosts struct {
-	once       *sync.Once
-	sourceUrls []string
-	hostList   *garray.StrArray
-	ipReg      *regexp.Regexp
-	urlReg     *regexp.Regexp
-	hostsReg   *regexp.Regexp
-	timeout    time.Duration // Second
-	maxAvgRtt  time.Duration // Millisecond
-	pingCount  int           // how many ping packets will be sent
-	workerNum  int           // Number of workers
+	once        *sync.Once
+	sourceUrls  []string
+	hostList    *garray.StrArray
+	ipReg       *regexp.Regexp
+	urlReg      *regexp.Regexp
+	hostsReg    *regexp.Regexp
+	timeout     time.Duration // Second
+	maxAvgRtt   time.Duration // Millisecond
+	pingCount   int           // how many ping packets will be sent
+	workerNum   int           // Number of workers
+	hostFilters []string      // filters that allows only specific hosts to be added
 }
 
 func New(urls ...string) *Ghosts {
 	ipReg := `((2(5[0-5]|[0-4]\d))|[0-1]?\d{1,2})(\.((2(5[0-5]|[0-4]\d))|[0-1]?\d{1,2})){3}`
 	urlReg := `[a-zA-Z0-9\.]{5,}`
 	hostsReg := fmt.Sprintf(`%s[\s\S]*%s`, HEAD, TAIL)
+	cnf := conf.GhConfig{}
+	cnf.Load()
 	return &Ghosts{
-		once:       &sync.Once{},
-		sourceUrls: urls,
-		hostList:   garray.NewStrArray(true),
-		ipReg:      regexp.MustCompile(ipReg),
-		urlReg:     regexp.MustCompile(urlReg),
-		hostsReg:   regexp.MustCompile(hostsReg),
-		timeout:    20 * time.Second,
-		maxAvgRtt:  400 * time.Millisecond,
-		pingCount:  10,
-		workerNum:  100,
+		once:        &sync.Once{},
+		sourceUrls:  urls,
+		hostList:    garray.NewStrArray(true),
+		ipReg:       regexp.MustCompile(ipReg),
+		urlReg:      regexp.MustCompile(urlReg),
+		hostsReg:    regexp.MustCompile(hostsReg),
+		timeout:     time.Duration(cnf.Conf.ReqTimeout) * time.Second,
+		maxAvgRtt:   time.Duration(cnf.Conf.MaxAvgRtt) * time.Millisecond,
+		pingCount:   cnf.Conf.PingCount,
+		workerNum:   cnf.Conf.WorkerNum,
+		hostFilters: cnf.Conf.HostFilters,
 	}
 }
 
@@ -130,7 +135,22 @@ func (that *Ghosts) Parse(resp []byte) {
 	wg.Wait()
 }
 
+func (that *Ghosts) toSave(url string) bool {
+	if len(that.hostFilters) == 0 {
+		return true
+	}
+	for _, filter := range that.hostFilters {
+		if strings.Contains(url, filter) {
+			return true
+		}
+	}
+	return false
+}
+
 func (that *Ghosts) PingHosts(ip, url string) {
+	if !that.toSave(url) {
+		return
+	}
 	pinger, err := ping.NewPinger(ip)
 	if err != nil {
 		fmt.Println("Ping hosts errored: ", err)

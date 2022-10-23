@@ -39,15 +39,40 @@ func RunCli() {
 				Aliases: []string{"o"},
 				Usage:   "open hosts file.",
 				Action: func(ctx *cli.Context) error {
-					openHostsFile()
+					hostsPath := utils.GetHostsFilePath()
+					utils.OpenFileWithEditor(hostsPath)
 					return nil
 				},
 			},
 			{
 				Name:    "config",
 				Aliases: []string{"c", "cnf", "conf"},
-				Usage:   "show config file content.",
+				Flags: []cli.Flag{
+					&cli.BoolFlag{
+						Name:    "path",
+						Aliases: []string{"p"},
+						Usage:   "show config file path.",
+					},
+					&cli.BoolFlag{
+						Name:    "open",
+						Aliases: []string{"o"},
+						Usage:   "open config file.",
+					},
+				},
+				Usage: "show config file content.",
 				Action: func(ctx *cli.Context) error {
+					if ctx.Bool("path") {
+						cnf := &conf.GhConfig{}
+						cnf.Load()
+						fmt.Println(cnf.ConfigPath())
+						return nil
+					}
+					if ctx.Bool("open") {
+						cnf := &conf.GhConfig{}
+						cnf.Load()
+						utils.OpenFileWithEditor(cnf.ConfigPath())
+						return nil
+					}
 					cnf := &conf.GhConfig{}
 					cnf.ShowConfig()
 					return nil
@@ -94,28 +119,16 @@ func run(ctx *cli.Context) error {
 	}
 	ghs := gh.New(urlsToFetch...)
 	ghs.Run()
-	return nil
-}
-
-func openHostsFile() {
-	hostsPath := utils.GetHostsFilePath()
-	if found, _ := utils.PahtIsExist(hostsPath); found {
-		ex := getEx()
-		cmd := exec.Command(ex)
-		cmd.Args = []string{ex, hostsPath}
+	// flush dns for windows
+	if utils.IsWindows() {
+		cmd := exec.Command("ipconfig")
+		cmd.Args = []string{"ipconfig", "/flushdns"}
 		cmd.Env = genv.All()
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Start(); err != nil {
-			fmt.Printf("Open host file errored: %s", err.Error())
+			fmt.Printf("Flush dns errored: %s", err.Error())
 		}
 	}
-}
-
-// getEx gets default editors on your machine.
-func getEx() string {
-	if utils.IsWindows() {
-		return "notepad.exe"
-	}
-	return "vi"
+	return nil
 }

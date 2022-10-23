@@ -1,11 +1,15 @@
 package utils
 
 import (
+	"fmt"
 	"net/url"
 	"os"
+	"os/exec"
 	"runtime"
 	"strings"
 	"sync"
+
+	"github.com/gogf/gf/os/genv"
 )
 
 var (
@@ -67,4 +71,26 @@ func InTest(list []string, str string) (r bool) {
 		}
 	}
 	return
+}
+
+func OpenFileWithEditor(filePath string) {
+	if found, _ := PahtIsExist(filePath); found {
+		ex := GetEditorEx()
+		cmd := exec.Command(ex)
+		cmd.Args = []string{ex, filePath}
+		cmd.Env = genv.All()
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Start(); err != nil {
+			fmt.Printf("Open host file errored: %s", err.Error())
+		}
+	}
+}
+
+// getEx gets default editors on your machine.
+func GetEditorEx() string {
+	if IsWindows() {
+		return "notepad.exe"
+	}
+	return "vi"
 }
