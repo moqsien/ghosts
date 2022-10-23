@@ -38,6 +38,10 @@ func IsWindows() bool {
 	return IsWin
 }
 
+func IsLinux() bool {
+	return strings.Contains(runtime.GOOS, "linux")
+}
+
 func PahtIsExist(path string) (bool, error) {
 	_, _err := os.Stat(path)
 	if _err == nil {
@@ -93,4 +97,14 @@ func GetEditorEx() string {
 		return "notepad.exe"
 	}
 	return "vi"
+}
+
+// CopyFileOnUnix copies file on Unix-like systems.
+func CopyFileOnUnix(from, to string) error {
+	cmd := exec.Command("sudo", "cp", from, to)
+	cmd.Env = genv.All()
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
+	cmd.Stdin = os.Stdin
+	return cmd.Run()
 }

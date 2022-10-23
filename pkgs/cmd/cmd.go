@@ -7,10 +7,11 @@ import (
 	"os/exec"
 
 	"github.com/gogf/gf/os/genv"
+	"github.com/urfave/cli/v2"
+
 	"github.com/moqsien/ghosts/pkgs/conf"
 	"github.com/moqsien/ghosts/pkgs/gh"
 	"github.com/moqsien/ghosts/pkgs/utils"
-	"github.com/urfave/cli/v2"
 )
 
 // RunCli parses cmd and runs it.
@@ -35,12 +36,11 @@ func RunCli() {
 				},
 			},
 			{
-				Name:    "open",
-				Aliases: []string{"o"},
-				Usage:   "open hosts file.",
+				Name:    "hostspath",
+				Aliases: []string{"hp", "host"},
+				Usage:   "show hosts file path.",
 				Action: func(ctx *cli.Context) error {
-					hostsPath := utils.GetHostsFilePath()
-					utils.OpenFileWithEditor(hostsPath)
+					fmt.Println(utils.GetHostsFilePath())
 					return nil
 				},
 			},
@@ -53,24 +53,13 @@ func RunCli() {
 						Aliases: []string{"p"},
 						Usage:   "show config file path.",
 					},
-					&cli.BoolFlag{
-						Name:    "open",
-						Aliases: []string{"o"},
-						Usage:   "open config file.",
-					},
 				},
-				Usage: "show config file content.",
+				Usage: "show config file info.",
 				Action: func(ctx *cli.Context) error {
 					if ctx.Bool("path") {
 						cnf := &conf.GhConfig{}
 						cnf.Load()
 						fmt.Println(cnf.ConfigPath())
-						return nil
-					}
-					if ctx.Bool("open") {
-						cnf := &conf.GhConfig{}
-						cnf.Load()
-						utils.OpenFileWithEditor(cnf.ConfigPath())
 						return nil
 					}
 					cnf := &conf.GhConfig{}
@@ -108,10 +97,11 @@ func RunCli() {
 func run(ctx *cli.Context) error {
 	fmt.Println("Fetching hosts, please wait...")
 	urlNum := ctx.Int("urlnum")
-	// actions by default: update hosts file from your os.
+	// actions by default: update hosts file.
 	cnf := &conf.GhConfig{}
 	cnf.Load()
 	urlsToFetch := []string{}
+	// specify source urls.
 	if urlNum > 0 && urlNum <= len(cnf.Conf.SourceUrls) {
 		urlsToFetch = append(urlsToFetch, cnf.Conf.SourceUrls[urlNum-1])
 	} else {

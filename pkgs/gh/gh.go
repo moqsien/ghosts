@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -13,9 +14,10 @@ import (
 
 	"github.com/go-ping/ping"
 	"github.com/gogf/gf/container/garray"
+	"github.com/panjf2000/ants/v2"
+
 	"github.com/moqsien/ghosts/pkgs/conf"
 	"github.com/moqsien/ghosts/pkgs/utils"
-	"github.com/panjf2000/ants/v2"
 )
 
 const (
@@ -46,6 +48,7 @@ type Ghosts struct {
 	pingCount   int           // how many ping packets will be sent
 	workerNum   int           // Number of workers
 	hostFilters []string      // filters that allows only specific hosts to be added
+	tempPath    string        // temporary host file path for linux, mac and freebsd
 }
 
 func New(urls ...string) *Ghosts {
@@ -153,11 +156,11 @@ func (that *Ghosts) PingHosts(ip, url string) {
 		fmt.Println("Ping hosts errored: ", err)
 		return
 	}
-	pinger.Count = 10
+	pinger.Count = that.pingCount
 	if utils.IsWindows() {
 		pinger.SetPrivileged(true)
 	}
-	pinger.Timeout = 400 * time.Millisecond
+	pinger.Timeout = that.maxAvgRtt
 	err = pinger.Run()
 	if err != nil {
 		fmt.Println(err)
@@ -187,9 +190,13 @@ func (that *Ghosts) ReadAndBackup() (content []byte) {
 		fmt.Println(err)
 		return
 	}
-	err = ioutil.WriteFile(that.BackupFilePath(), content, 0644)
+	if utils.IsWindows() {
+		err = ioutil.WriteFile(that.BackupFilePath(), content, 0644)
+	} else {
+		err = utils.CopyFileOnUnix(that.HostsFilePath(), that.BackupFilePath())
+	}
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("Hosts file backup failed: ", err)
 		return
 	}
 	return
@@ -244,9 +251,19 @@ func (that *Ghosts) Run(toclear ...bool) {
 	if newStr == "" {
 		return
 	}
-	err := ioutil.WriteFile(that.HostsFilePath(), []byte(newStr), 0644)
+	var err error
+	if utils.IsWindows() {
+		err = ioutil.WriteFile(that.HostsFilePath(), []byte(newStr), 0666)
+	} else {
+		cnf := &conf.GhConfig{}
+		that.tempPath = filepath.Join(filepath.Dir(cnf.ConfigPath()), "tempHosts.txt")
+		err = ioutil.WriteFile(that.tempPath, []byte(newStr), 0666)
+		if err == nil {
+			err = utils.CopyFileOnUnix(that.tempPath, that.HostsFilePath())
+		}
+	}
 	if err != nil {
-		fmt.Println("Write file errored: ", err)
+		fmt.Println("\nWrite file errored: ", err)
 		return
 	}
 	fmt.Println("Successed!")
