@@ -40,7 +40,6 @@ type Ghosts struct {
 	sourceUrls  []string
 	hostList    *garray.StrArray
 	ipReg       *regexp.Regexp
-	urlReg      *regexp.Regexp
 	hostsReg    *regexp.Regexp
 	timeout     time.Duration // Second
 	maxAvgRtt   time.Duration // Millisecond
@@ -51,7 +50,6 @@ type Ghosts struct {
 
 func New(urls ...string) *Ghosts {
 	ipReg := `((2(5[0-5]|[0-4]\d))|[0-1]?\d{1,2})(\.((2(5[0-5]|[0-4]\d))|[0-1]?\d{1,2})){3}`
-	urlReg := `[a-zA-Z0-9\.]{5,}`
 	hostsReg := fmt.Sprintf(`%s[\s\S]*%s`, HEAD, TAIL)
 	cnf := conf.GhConfig{}
 	cnf.Load()
@@ -60,7 +58,6 @@ func New(urls ...string) *Ghosts {
 		sourceUrls:  urls,
 		hostList:    garray.NewStrArray(true),
 		ipReg:       regexp.MustCompile(ipReg),
-		urlReg:      regexp.MustCompile(urlReg),
 		hostsReg:    regexp.MustCompile(hostsReg),
 		timeout:     time.Duration(cnf.Conf.ReqTimeout) * time.Second,
 		maxAvgRtt:   time.Duration(cnf.Conf.MaxAvgRtt) * time.Millisecond,
